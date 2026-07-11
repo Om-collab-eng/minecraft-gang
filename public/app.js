@@ -414,5 +414,19 @@ document.addEventListener('keydown', e => {
   draw();
 })();
 
+// ─── COPY IP TO CLIPBOARD ──────────────────────────────────────────
+$('server-ip').addEventListener('click', () => {
+  const ip = 'lifesteal.skilloraclouds.com';
+  navigator.clipboard.writeText(ip).then(() => {
+    showToast('📋 Server IP copied to clipboard!', 'join');
+    const el = $('server-ip');
+    el.style.color = 'var(--accent-blue)';
+    setTimeout(() => el.style.color = 'var(--accent-green)', 1000);
+  }).catch(() => {
+    showToast('❌ Failed to copy IP', 'error');
+  });
+});
+
 // ─── BOOT ─────────────────────────────────────────────────────────
 connect();
+
