@@ -77,12 +77,12 @@ async function getServers() {
   try {
     const res = await pteroRequest('/api/client');
     if (res.status !== 200) {
-      console.error('[Pterodactyl] Failed to get servers:', res.status, JSON.stringify(res.body).slice(0, 200));
+      logDebug(`[Pterodactyl] Failed to get servers: ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
       return [];
     }
     return res.body.data || [];
   } catch (e) {
-    console.error('[Pterodactyl] Error fetching servers:', e.message);
+    logDebug(`[Pterodactyl] Error fetching servers: ${e.message}`);
     return [];
   }
 }
@@ -117,20 +117,20 @@ async function connectConsole(serverId) {
   try {
     const res = await pteroRequest(`/api/client/servers/${serverId}/websocket`);
     if (res.status !== 200) {
-      console.error('[Pterodactyl] Cannot get WS credentials:', res.status);
+      logDebug(`[Pterodactyl] Cannot get WS credentials: ${res.status}`);
       setTimeout(() => connectConsole(serverId), 10000);
       return;
     }
 
     const { token, socket } = res.body.data;
-    console.log('[Pterodactyl] Connecting to console WebSocket...');
+    logDebug('[Pterodactyl] Connecting to console WebSocket...');
 
     pteroWs = new WebSocket(socket, {
       headers: { Origin: PANEL_URL },
     });
 
     pteroWs.on('open', () => {
-      console.log('[Pterodactyl] Console WS connected');
+      logDebug('[Pterodactyl] Console WS connected');
       // Authenticate with the panel
       pteroWs.send(JSON.stringify({ event: 'auth', args: [token] }));
     });
@@ -310,17 +310,44 @@ wss.on('connection', ws => {
   ws.on('close', () => console.log('[Dashboard] Browser client disconnected'));
 });
 
+// ─── DEBUG / DIAGNOSTICS ──────────────────────────────────────────────────────
+let debugLogs = [];
+function logDebug(msg) {
+  console.log(msg);
+  debugLogs.push(`[${new Date().toISOString()}] ${msg}`);
+  if (debugLogs.length > 50) debugLogs.shift();
+}
+
 // ─── STATIC ──────────────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/status', (req, res) => res.json({ ok: true, serverInfo }));
+app.get('/api/debug', async (req, res) => {
+  try {
+    const testReq = await pteroRequest('/api/client');
+    res.json({
+      ok: true,
+      detectedServerId,
+      serverInfo,
+      debugLogs,
+      testRequest: {
+        status: testReq.status,
+        headers: testReq.headers,
+        bodyType: typeof testReq.body,
+        bodyPreview: typeof testReq.body === 'string' ? testReq.body.slice(0, 1000) : testReq.body
+      }
+    });
+  } catch (e) {
+    res.json({ ok: false, error: e.message, debugLogs });
+  }
+});
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 async function boot() {
-  console.log('[Dashboard] Connecting to Pterodactyl panel...');
+  logDebug('Connecting to Pterodactyl panel...');
   const servers = await getServers();
 
   if (!servers.length) {
-    console.error('[Dashboard] No servers found or API blocked. Check your API key and panel URL.');
+    logDebug('[Dashboard] No servers found or API blocked. Check your API key and panel URL.');
     // Still start the HTTP server so Render doesn't fail
   } else {
     const first = servers[0].attributes;
@@ -328,8 +355,8 @@ async function boot() {
     serverInfo.name       = first.name || 'Minecrafter Gang SMP';
     serverInfo.maxPlayers = first.limits?.threads || 20;
 
-    console.log(`[Dashboard] Found server: "${first.name}" (ID: ${detectedServerId})`);
-    console.log('[Dashboard] Connecting to live console...');
+    logDebug(`[Dashboard] Found server: "${first.name}" (ID: ${detectedServerId})`);
+    logDebug('[Dashboard] Connecting to live console...');
 
     // Connect to console WebSocket
     connectConsole(detectedServerId);
