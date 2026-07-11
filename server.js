@@ -4,7 +4,6 @@ const WebSocket = require('ws');
 const https = require('https');
 const path = require('path');
 const { Client } = require('ssh2');
-const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
 const fs = require('fs');
 const url = require('url');
