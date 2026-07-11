@@ -5,18 +5,15 @@ import com.minecraftergang.dashboard.stats.StatTracker;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import fr.xephi.authme.AuthMe;
-import fr.xephi.authme.api.v3.AuthMeApi;
-import fr.xephi.authme.datasource.DataSource;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.Executors;
 
@@ -58,7 +55,6 @@ public class DashboardApiServer {
     public void updateConfig(int port, String apiKey, String corsOrigin) {
         this.apiKey = apiKey;
         this.corsOrigin = corsOrigin;
-        // Port change requires restart
         if (this.port != port) {
             this.port = port;
             plugin.getLogger().info("Port changed to " + port + " — restart server for change to take effect.");
@@ -85,7 +81,7 @@ public class DashboardApiServer {
     @SuppressWarnings("unchecked")
     private void sendJson(HttpExchange ex, int code, Object obj) throws IOException {
         sendCors(ex);
-        String json = mapToJson(obj);
+        String json = toJson(obj);
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().set("Content-Type", "application/json");
         ex.sendResponseHeaders(code, bytes.length);
@@ -100,15 +96,15 @@ public class DashboardApiServer {
         }
     }
 
-    // Simple JSON builder (no external library needed)
-    private String mapToJson(Object obj) {
+    @SuppressWarnings("unchecked")
+    private String toJson(Object obj) {
         if (obj instanceof Map) {
             StringBuilder sb = new StringBuilder("{");
             boolean first = true;
             for (Map.Entry<?, ?> entry : ((Map<?, ?>) obj).entrySet()) {
                 if (!first) sb.append(",");
-                sb.append("\"").append(escapeJson(String.valueOf(entry.getKey()))).append("\":");
-                sb.append(mapToJson(entry.getValue()));
+                sb.append("\"").append(esc(String.valueOf(entry.getKey()))).append("\":");
+                sb.append(toJson(entry.getValue()));
                 first = false;
             }
             return sb.append("}").toString();
@@ -117,7 +113,7 @@ public class DashboardApiServer {
             boolean first = true;
             for (Object item : (List<?>) obj) {
                 if (!first) sb.append(",");
-                sb.append(mapToJson(item));
+                sb.append(toJson(item));
                 first = false;
             }
             return sb.append("]").toString();
@@ -126,36 +122,34 @@ public class DashboardApiServer {
         } else if (obj == null) {
             return "null";
         } else {
-            return "\"" + escapeJson(String.valueOf(obj)) + "\"";
+            return "\"" + esc(String.valueOf(obj)) + "\"";
         }
     }
 
-    private String escapeJson(String s) {
+    private String esc(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
     }
 
-    private Map<String, Object> jsonToMap(String json) {
-        Map<String, Object> map = new HashMap<>();
+    private Map<String, String> parseBody(String json) {
+        Map<String, String> map = new HashMap<>();
         json = json.trim();
         if (!json.startsWith("{")) return map;
         json = json.substring(1, json.length() - 1).trim();
         if (json.isEmpty()) return map;
-
-        // Simple key-value parser
         String[] pairs = json.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
         for (String pair : pairs) {
             String[] kv = pair.split(":", 2);
             if (kv.length == 2) {
-                String key = kv[0].trim().replace("\"", "").replace("}", "");
-                String val = kv[1].trim().replace("\"", "").replace("}", "");
+                String key = kv[0].trim().replace("\"", "");
+                String val = kv[1].trim().replace("\"", "");
                 map.put(key, val);
             }
         }
         return map;
     }
 
-    // ─── /api/login — AuthMe password verification ────────────────────
+    // ─── /api/login — AuthMe via reflection ───────────────────────────
 
     class LoginHandler implements HttpHandler {
         @Override
@@ -165,73 +159,80 @@ public class DashboardApiServer {
                 ex.sendResponseHeaders(204, -1);
                 return;
             }
-
             if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
                 sendJson(ex, 405, Map.of("ok", false, "error", "POST required"));
                 return;
             }
-
             if (!checkAuth(ex)) return;
 
             String body = readBody(ex);
-            Map<String, Object> req = jsonToMap(body);
-            String username = String.valueOf(req.getOrDefault("username", ""));
-            String password = String.valueOf(req.getOrDefault("password", ""));
+            Map<String, String> req = parseBody(body);
+            String username = req.getOrDefault("username", "");
+            String password = req.getOrDefault("password", "");
 
             if (username.isEmpty() || password.isEmpty()) {
                 sendJson(ex, 400, Map.of("ok", false, "error", "Missing username or password"));
                 return;
             }
 
-            // Use AuthMe API to check password
             try {
-                AuthMeApi authMeApi = AuthMeApi.getInstance();
-                DataSource dataSource = authMeApi.getDataSource();
+                // Use AuthMe API via reflection (no compile dependency)
+                Object authMeApi = Class.forName("fr.xephi.authme.api.v3.AuthMeApi").getMethod("getInstance").invoke(null);
+                Object dataSource = authMeApi.getClass().getMethod("getDataSource").invoke(authMeApi);
 
-                // Check if user is registered
-                boolean isRegistered = dataSource.isRegistered(username);
+                // Check if registered
+                boolean isRegistered = (boolean) dataSource.getClass()
+                    .getMethod("isRegistered", String.class)
+                    .invoke(dataSource, username);
+
                 if (!isRegistered) {
                     sendJson(ex, 401, Map.of("ok", false, "error", "Player not registered"));
                     return;
                 }
 
-                // Get the stored password hash
-                String storedHash = dataSource.getPassword(username);
+                // Get stored password hash
+                String storedHash = (String) dataSource.getClass()
+                    .getMethod("getPassword", String.class)
+                    .invoke(dataSource, username);
+
                 if (storedHash == null || storedHash.isEmpty()) {
-                    sendJson(ex, 401, Map.of("ok", false, "error", "No password stored for this player"));
+                    sendJson(ex, 401, Map.of("ok", false, "error", "No password stored"));
                     return;
                 }
 
-                // Use AuthMe's own password checking (supports all hash formats)
-                boolean valid = authMeApi.checkPassword(
-                    fr.xephi.authme.api.v3.AuthMeApi.getInstance().getPlugin(),
-                    username,
-                    password
-                );
-
-                // Fallback: if the above doesn't work, try the DataSource check
-                if (!valid) {
-                    // Some AuthMe versions: checkPassword(DataSource, username, password)
-                    valid = fr.xephi.authme.api.v3.AuthMeApi.getInstance()
-                        .checkPassword(dataSource, username, password);
+                // Try checkPassword via AuthMe API
+                boolean valid = false;
+                try {
+                    Method checkPw = authMeApi.getClass().getMethod("checkPassword", String.class, String.class);
+                    valid = (boolean) checkPw.invoke(authMeApi, username, password);
+                } catch (NoSuchMethodException e) {
+                    // Try alternative signature: checkPassword(DataSource, String, String)
+                    try {
+                        Method checkPw = authMeApi.getClass().getMethod("checkPassword", dataSource.getClass(), String.class, String.class);
+                        valid = (boolean) checkPw.invoke(authMeApi, dataSource, username, password);
+                    } catch (NoSuchMethodException e2) {
+                        plugin.getLogger().warning("[API] Could not find AuthMe checkPassword method. AuthMe version may be incompatible.");
+                    }
                 }
 
                 if (valid) {
-                    // Get the real name (capitalized)
-                    String realName = dataSource.getRealName(username);
-                    if (realName == null || realName.isEmpty()) {
-                        realName = username;
-                    }
+                    String realName = username;
+                    try {
+                        realName = (String) dataSource.getClass()
+                            .getMethod("getRealName", String.class)
+                            .invoke(dataSource, username);
+                        if (realName == null || realName.isEmpty()) realName = username;
+                    } catch (Exception ignored) {}
 
                     plugin.getLogger().info("[API] Login SUCCESS: " + realName);
-                    sendJson(ex, 200, Map.of(
-                        "ok", true,
-                        "username", realName
-                    ));
+                    sendJson(ex, 200, Map.of("ok", true, "username", realName));
                 } else {
                     plugin.getLogger().info("[API] Login FAILED: " + username);
                     sendJson(ex, 401, Map.of("ok", false, "error", "Invalid password"));
                 }
+            } catch (ClassNotFoundException e) {
+                plugin.getLogger().severe("[API] AuthMe not found on server!");
+                sendJson(ex, 500, Map.of("ok", false, "error", "AuthMe plugin not installed on server"));
             } catch (Exception e) {
                 plugin.getLogger().severe("[API] Login error: " + e.getMessage());
                 sendJson(ex, 500, Map.of("ok", false, "error", "AuthMe error: " + e.getMessage()));
@@ -249,27 +250,13 @@ public class DashboardApiServer {
                 ex.sendResponseHeaders(204, -1);
                 return;
             }
-
             if (!checkAuth(ex)) return;
 
             String path = ex.getRequestURI().getPath();
             String username = path.replace("/api/stats/", "").replace("/api/stats", "");
 
-            // Also try query param
             if (username.isEmpty()) {
-                String query = ex.getRequestURI().getQuery();
-                if (query != null) {
-                    for (String param : query.split("&")) {
-                        String[] kv = param.split("=", 2);
-                        if (kv.length == 2 && kv[0].equals("username")) {
-                            username = kv[1];
-                        }
-                    }
-                }
-            }
-
-            if (username.isEmpty()) {
-                sendJson(ex, 400, Map.of("ok", false, "error", "Missing username. Use /api/stats/<username>"));
+                sendJson(ex, 400, Map.of("ok", false, "error", "Missing username"));
                 return;
             }
 
@@ -283,7 +270,7 @@ public class DashboardApiServer {
         }
     }
 
-    // ─── /api/online — List online players with live data ────────────
+    // ─── /api/online — List online players ────────────────────────────
 
     class OnlinePlayersHandler implements HttpHandler {
         @Override
@@ -293,7 +280,6 @@ public class DashboardApiServer {
                 ex.sendResponseHeaders(204, -1);
                 return;
             }
-
             if (!checkAuth(ex)) return;
 
             List<Map<String, Object>> players = new ArrayList<>();
@@ -305,11 +291,7 @@ public class DashboardApiServer {
                 data.put("maxHealth", p.getMaxHealth());
                 data.put("food", p.getFoodLevel());
                 data.put("level", p.getLevel());
-                data.put("exp", Math.round(p.getExp() * 100.0) / 10.0);
-                data.put("gamemode", p.getGameMode().name());
-                data.put("ip", p.getAddress() != null ? p.getAddress().getAddress().getHostAddress() : "unknown");
 
-                // Merged stats
                 Map<String, Object> playerStats = statTracker.getStats(p.getName());
                 if (playerStats != null) {
                     data.put("kills", playerStats.getOrDefault("playerKills", 0));
@@ -328,7 +310,7 @@ public class DashboardApiServer {
         }
     }
 
-    // ─── /api/status — Plugin health check ────────────────────────────
+    // ─── /api/status — Health check ───────────────────────────────────
 
     class StatusHandler implements HttpHandler {
         @Override
@@ -339,19 +321,20 @@ public class DashboardApiServer {
                 return;
             }
 
+            boolean authmeLoaded = false;
+            try {
+                Class.forName("fr.xephi.authme.api.v3.AuthMeApi");
+                authmeLoaded = true;
+            } catch (ClassNotFoundException ignored) {}
+
             Map<String, Object> status = new LinkedHashMap<>();
             status.put("ok", true);
             status.put("plugin", "MinecrafterGang");
             status.put("version", plugin.getDescription().getVersion());
             status.put("online", Bukkit.getOnlinePlayers().size());
             status.put("maxPlayers", Bukkit.getMaxPlayers());
-            status.put("serverVersion", Bukkit.getBukkitVersion());
-            status.put("authme", isAuthMeLoaded());
+            status.put("authme", authmeLoaded);
             sendJson(ex, 200, status);
-        }
-
-        private boolean isAuthMeLoaded() {
-            return Bukkit.getPluginManager().getPlugin("AuthMe") != null;
         }
     }
 }
