@@ -381,48 +381,209 @@ const activeSessions = new Map(); // token -> username
 // Synchronize AuthMe DB from remote SFTP server
 function syncAuthDb() {
   return new Promise((resolve, reject) => {
-    if (!sftpConn) {
-      return reject(new Error('SFTP client is not connected to Minecraft server'));
-    }
-
     const now = Date.now();
-    // Cache database for 2 minutes
     if (fs.existsSync(DB_LOCAL_PATH) && (now - dbSyncTime < 120000)) {
       return resolve(DB_LOCAL_PATH);
     }
 
-    sftpConn.sftp((err, sftp) => {
-      if (err) return reject(new Error(`SFTP Session failed: ${err.message}`));
-      logDebug('[SFTP] Synchronizing authme.db database...');
-      sftp.fastGet('plugins/AuthMe/authme.db', DB_LOCAL_PATH, {}, (err) => {
+    // Method 1: Try SFTP
+    if (sftpConn) {
+      sftpConn.sftp((err, sftp) => {
         if (err) {
-          logDebug(`[SFTP] Database sync failed: ${err.message}`);
-          reject(err);
-        } else {
-          dbSyncTime = Date.now();
-          logDebug('[SFTP] authme.db synchronized successfully');
-          resolve(DB_LOCAL_PATH);
+          logDebug(`[Auth] SFTP session failed, trying Pterodactyl API: ${err.message}`);
+          return downloadAuthDbViaApi().then(resolve).catch(reject);
         }
+        logDebug('[Auth] Downloading authme.db via SFTP...');
+        sftp.fastGet('plugins/AuthMe/authme.db', DB_LOCAL_PATH, {}, (err) => {
+          if (err) {
+            logDebug(`[Auth] SFTP fastGet failed: ${err.message}, trying Pterodactyl API...`);
+            return downloadAuthDbViaApi().then(resolve).catch(reject);
+          }
+          dbSyncTime = Date.now();
+          logDebug('[Auth] authme.db synced via SFTP');
+          resolve(DB_LOCAL_PATH);
+        });
       });
+    } else {
+      // Method 2: Download via Pterodactyl file download API
+      downloadAuthDbViaApi().then(resolve).catch(reject);
+    }
+  });
+}
+
+// Fallback: download authme.db via Pterodactyl client API
+function downloadAuthDbViaApi() {
+  return new Promise(async (resolve, reject) => {
+    if (!detectedServerId) {
+      return reject(new Error('No server ID detected — cannot download auth database'));
+    }
+    logDebug('[Auth] Downloading authme.db via Pterodactyl file API...');
+    try {
+      const res = await pteroRequest(`/api/client/servers/${detectedServerId}/files/download?file=${encodeURIComponent('plugins/AuthMe/authme.db')}`);
+      if (res.status !== 200) {
+        return reject(new Error(`Pterodactyl file download failed: ${res.status}`));
+      }
+      // The response body contains a redirect URL with a token
+      const downloadUrl = res.body.attributes?.url;
+      if (!downloadUrl) {
+        return reject(new Error('No download URL from Pterodactyl'));
+      }
+      // Follow redirect to download the actual file
+      https.get(downloadUrl, (dlRes) => {
+        if (dlRes.statusCode >= 300 && dlRes.statusCode < 400 && dlRes.headers.location) {
+          https.get(dlRes.headers.location, (dlRes2) => {
+            const chunks = [];
+            dlRes2.on('data', c => chunks.push(c));
+            dlRes2.on('end', () => {
+              fs.writeFileSync(DB_LOCAL_PATH, Buffer.concat(chunks));
+              dbSyncTime = Date.now();
+              logDebug('[Auth] authme.db synced via Pterodactyl API');
+              resolve(DB_LOCAL_PATH);
+            });
+          }).on('error', e => reject(new Error(`Download redirect failed: ${e.message}`)));
+        } else {
+          const chunks = [];
+          dlRes.on('data', c => chunks.push(c));
+          dlRes.on('end', () => {
+            fs.writeFileSync(DB_LOCAL_PATH, Buffer.concat(chunks));
+            dbSyncTime = Date.now();
+            logDebug('[Auth] authme.db synced via Pterodactyl API');
+            resolve(DB_LOCAL_PATH);
+          });
+        }
+      }).on('error', e => reject(new Error(`Download failed: ${e.message}`)));
+    } catch (e) {
+      reject(new Error(`Pterodactyl API download error: ${e.message}`));
+    }
+  });
+}
+
+// Detect the actual AuthMe table name
+async function getAuthTableName(dbPath) {
+  return new Promise((resolve) => {
+    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+      if (err) return resolve('authme');
+    });
+    db.all("SELECT name FROM sqlite_master WHERE type='table'", [], (err, rows) => {
+      db.close();
+      if (err || !rows) return resolve('authme');
+      const names = rows.map(r => r.name);
+      // Common AuthMe table names
+      const match = names.find(n => /^authme(-users)?$/i.test(n)) || names[0] || 'authme';
+      logDebug(`[Auth] Detected table name: "${match}" (all tables: ${names.join(', ')})`);
+      resolve(match);
     });
   });
 }
 
-// Verify password against AuthMe SHA256 format
+// Detect column names in the auth table
+async function getAuthColumns(dbPath, tableName) {
+  return new Promise((resolve) => {
+    const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY, (err) => {
+      if (err) return resolve(null);
+    });
+    db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      db.close();
+      if (err || !rows) return resolve(null);
+      const cols = rows.map(r => r.name);
+      logDebug(`[Auth] Columns in "${tableName}": ${cols.join(', ')}`);
+      resolve(cols);
+    });
+  });
+}
+
+// Verify password against AuthMe hash format
 function verifyAuthMePassword(hash, password) {
-  if (!hash || !hash.startsWith('$SHA$')) {
-    return false;
+  if (!hash) return false;
+
+  // $SHA$salt$hash — double SHA-256 with salt
+  if (hash.startsWith('$SHA$')) {
+    const parts = hash.split('$');
+    if (parts.length < 4) return false;
+    const salt = parts[2];
+    const storedHash = parts[3];
+    const hash1 = crypto.createHash('sha256').update(password).digest('hex');
+    const hash2 = crypto.createHash('sha256').update(hash1 + salt).digest('hex');
+    return hash2 === storedHash;
   }
-  const parts = hash.split('$');
-  if (parts.length < 4) return false;
 
-  const salt = parts[2];
-  const storedHash = parts[3];
+  // $SHA256$salt$hash — single SHA-256 with salt
+  if (hash.startsWith('$SHA256$')) {
+    const parts = hash.split('$');
+    if (parts.length < 4) return false;
+    const salt = parts[2];
+    const storedHash = parts[3];
+    const computed = crypto.createHash('sha256').update(salt + password).digest('hex');
+    return computed === storedHash;
+  }
 
-  const hash1 = crypto.createHash('sha256').update(password).digest('hex');
-  const hash2 = crypto.createHash('sha256').update(hash1 + salt).digest('hex');
+  // $2a$... or $2b$... — bcrypt
+  if (hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$')) {
+    try {
+      const bcrypt = require('bcryptjs');
+      return bcrypt.compareSync(password, hash);
+    } catch {
+      // bcryptjs not available
+      logDebug('[Auth] bcrypt hash detected but bcryptjs not installed');
+      return false;
+    }
+  }
 
-  return hash2 === storedHash;
+  // $argon2... — argon2
+  if (hash.startsWith('$argon2')) {
+    try {
+      const argon2 = require('argon2');
+      return argon2.verify(hash, password);
+    } catch {
+      logDebug('[Auth] argon2 hash detected but argon2 not installed');
+      return false;
+    }
+  }
+
+  // $5$salt$hash — SHA-256 crypt
+  if (hash.startsWith('$5$')) {
+    const parts = hash.split('$');
+    if (parts.length < 3) return false;
+    const salt = parts[1];
+    const storedHash = parts[2];
+    const computed = crypto.createHash('sha256').update(salt + password).digest('hex');
+    return computed === storedHash;
+  }
+
+  // $6$salt$hash — SHA-512 crypt
+  if (hash.startsWith('$6$')) {
+    const parts = hash.split('$');
+    if (parts.length < 3) return false;
+    const salt = parts[1];
+    const storedHash = parts[2];
+    const computed = crypto.createHash('sha512').update(salt + password).digest('hex');
+    return computed === storedHash;
+  }
+
+  // Plaintext fallback (insecure but some servers have it)
+  logDebug(`[Auth] Unknown hash format: ${hash.substring(0, 20)}... — trying plaintext comparison`);
+  return hash === password;
+}
+
+// Detect password column name
+function getPasswordCol(columns) {
+  if (!columns) return 'password';
+  const candidates = ['password', 'pass', 'pwd', 'hash', 'passwordhash'];
+  return columns.find(c => candidates.includes(c.toLowerCase())) || columns.find(c => c.toLowerCase().includes('pass')) || 'password';
+}
+
+// Detect realname column name
+function getRealnameCol(columns) {
+  if (!columns) return 'realname';
+  const candidates = ['realname', 'real_name', 'realnamecolumn', 'displayname'];
+  return columns.find(c => candidates.includes(c.toLowerCase())) || columns.find(c => c.toLowerCase().includes('real')) || 'realname';
+}
+
+// Detect username column name
+function getUsernameCol(columns) {
+  if (!columns) return 'username';
+  const candidates = ['username', 'user', 'player_name', 'playername', 'name'];
+  return columns.find(c => candidates.includes(c.toLowerCase())) || columns.find(c => c.toLowerCase().includes('user') || c.toLowerCase().includes('name')) || 'username';
 }
 
 // Verify credentials from SQLite
@@ -431,23 +592,37 @@ function authenticatePlayer(username, password) {
     try {
       await syncAuthDb();
       
+      const tableName = await getAuthTableName(DB_LOCAL_PATH);
+      const columns = await getAuthColumns(DB_LOCAL_PATH, tableName);
+      const passCol = getPasswordCol(columns);
+      const realCol = getRealnameCol(columns);
+      const userCol = getUsernameCol(columns);
+
+      logDebug(`[Auth] Querying: SELECT ${passCol}, ${realCol} FROM ${tableName} WHERE ${userCol} = ?`);
+
       const db = new sqlite3.Database(DB_LOCAL_PATH, sqlite3.OPEN_READONLY, (err) => {
         if (err) return reject(new Error(`SQLite open error: ${err.message}`));
       });
 
-      db.get('SELECT password, realname FROM authme WHERE username = ?', [username.toLowerCase()], (err, row) => {
+      db.get(`SELECT ${passCol} AS password, ${realCol} AS realname FROM ${tableName} WHERE ${userCol} = ?`, [username.toLowerCase()], (err, row) => {
         db.close();
         if (err) return reject(new Error(`Database query error: ${err.message}`));
-        if (!row) return resolve(null); // User not found
+        if (!row) {
+          logDebug(`[Auth] User "${username}" not found in ${tableName}`);
+          return resolve(null);
+        }
 
+        logDebug(`[Auth] Found user "${row.realname}", hash starts with: ${row.password?.substring(0, 15)}...`);
         const isValid = verifyAuthMePassword(row.password, password);
+        logDebug(`[Auth] Password verification: ${isValid ? 'SUCCESS' : 'FAILED'}`);
         if (isValid) {
-          resolve({ username: row.realname });
+          resolve({ username: row.realname || username });
         } else {
-          resolve(null); // Wrong password
+          resolve(null);
         }
       });
     } catch (e) {
+      logDebug(`[Auth] Error: ${e.message}`);
       reject(e);
     }
   });
@@ -475,13 +650,22 @@ app.post('/api/login', async (req, res) => {
     const user = await authenticatePlayer(username, password);
     if (user) {
       const token = createSession(user.username);
+      logDebug(`[Login] SUCCESS: ${user.username} logged in`);
       res.json({ ok: true, token, username: user.username });
     } else {
-      res.status(401).json({ ok: false, error: 'Invalid username or password' });
+      logDebug(`[Login] FAILED: "${username}" — bad credentials or user not found`);
+      res.status(401).json({ ok: false, error: 'Invalid username or password. Make sure you use your Minecraft username and AuthMe password.' });
     }
   } catch (err) {
     logDebug(`[Login Error] ${err.message}`);
-    res.status(500).json({ ok: false, error: 'Authentication database error' });
+    // Give a more specific error message
+    let hint = '';
+    if (err.message.includes('SFTP')) {
+      hint = ' (SFTP not connected — set SFTP_PRIVATE_KEY)';
+    } else if (err.message.includes('Pterodactyl')) {
+      hint = ' (Could not reach Pterodactyl panel)';
+    }
+    res.status(500).json({ ok: false, error: `Authentication database error${hint}` });
   }
 });
 
