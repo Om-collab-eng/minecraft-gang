@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minecrafter Gang — Server Dashboard</title>
+  <meta name="description" content="Real-time read-only dashboard for the Minecrafter Gang Minecraft server. Monitor console output, player activity, and server stats live." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ── BACKGROUND PARTICLES ── -->
+  <canvas id="particles-canvas"></canvas>
+
+  <!-- ── HEADER ── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon">⛏️</div>
+        <div class="brand-text">
+          <h1 class="brand-name">Minecrafter Gang</h1>
+          <span class="brand-sub">Server Dashboard · Read-Only</span>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="status-badge" id="connection-badge">
+          <span class="status-dot"></span>
+          <span class="status-label">Connecting…</span>
+        </div>
+        <div class="server-time" id="server-time">--:--:--</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── MAIN LAYOUT ── -->
+  <main class="dashboard">
+
+    <!-- ── ROW 1: SERVER INFO CARDS ── -->
+    <section class="info-strip">
+      <div class="info-card" id="card-status">
+        <div class="card-icon">🟢</div>
+        <div class="card-body">
+          <div class="card-value" id="val-status">Online</div>
+          <div class="card-label">Server Status</div>
+        </div>
+      </div>
+
+      <div class="info-card" id="card-players">
+        <div class="card-icon">👥</div>
+        <div class="card-body">
+          <div class="card-value"><span id="val-players">0</span><span class="card-max">/<span id="val-maxplayers">20</span></span></div>
+          <div class="card-label">Players Online</div>
+        </div>
+      </div>
+
+      <div class="info-card" id="card-version">
+        <div class="card-icon">📦</div>
+        <div class="card-body">
+          <div class="card-value" id="val-version">—</div>
+          <div class="card-label">MC Version</div>
+        </div>
+      </div>
+
+      <div class="info-card" id="card-tps">
+        <div class="card-icon">⚡</div>
+        <div class="card-body">
+          <div class="card-value" id="val-tps">20.0</div>
+          <div class="card-label">TPS</div>
+        </div>
+      </div>
+
+      <div class="info-card" id="card-memory">
+        <div class="card-icon">💾</div>
+        <div class="card-body">
+          <div class="card-value"><span id="val-mem-used">—</span> <span class="card-max">MB</span></div>
+          <div class="card-label">Memory Used</div>
+        </div>
+      </div>
+
+      <div class="info-card" id="card-uptime">
+        <div class="card-icon">⏱️</div>
+        <div class="card-body">
+          <div class="card-value" id="val-uptime">0m</div>
+          <div class="card-label">Dashboard Uptime</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ROW 2: MAIN PANELS ── -->
+    <div class="panels-row">
+
+      <!-- ── LEFT: CONSOLE ── -->
+      <section class="panel panel-console">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span class="panel-icon">🖥️</span>
+            <span>Live Console</span>
+            <span class="readonly-badge">READ ONLY</span>
+          </div>
+          <div class="panel-controls">
+            <label class="toggle-label" for="autoscroll-toggle">
+              <input type="checkbox" id="autoscroll-toggle" checked />
+              Auto-scroll
+            </label>
+            <button class="btn-clear" id="btn-clear-console">Clear</button>
+          </div>
+        </div>
+        <div class="console-output" id="console-output" aria-label="Server console output" role="log" aria-live="polite"></div>
+        <div class="console-footer">
+          <span class="line-count"><span id="log-count">0</span> lines</span>
+          <span class="no-input-notice">🔒 Command input is disabled</span>
+        </div>
+      </section>
+
+      <!-- ── RIGHT: SIDEBAR ── -->
+      <aside class="sidebar">
+
+        <!-- Online Players -->
+        <section class="panel panel-players">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span class="panel-icon">🧑‍🤝‍🧑</span>
+              <span>Online Players</span>
+            </div>
+          </div>
+          <div class="player-list" id="player-list">
+            <div class="empty-state">No players online</div>
+          </div>
+        </section>
+
+        <!-- Activity Feed -->
+        <section class="panel panel-activity">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span class="panel-icon">📡</span>
+              <span>Player Activity</span>
+            </div>
+            <button class="btn-clear" id="btn-clear-activity">Clear</button>
+          </div>
+          <div class="activity-feed" id="activity-feed" role="log" aria-live="polite">
+            <div class="empty-state">Waiting for activity…</div>
+          </div>
+        </section>
+
+      </aside>
+    </div>
+
+  </main>
+
+  <!-- ── TOAST NOTIFICATIONS ── -->
+  <div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
