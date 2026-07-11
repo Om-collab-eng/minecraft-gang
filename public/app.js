@@ -40,11 +40,17 @@ window.onerror = function(message, source, lineno, colno, error) {
   }).catch(() => {});
 };
 
+// ─── AUTH STATE ────────────────────────────────────────────────────
+let authToken = localStorage.getItem('mcg_token') || null;
+let authUser  = localStorage.getItem('mcg_user')  || null;
+let ws = null;
+
 // ─── STATE ───────────────────────────────────────────────────────
 const state = {
   connected: false,
   autoScroll: true,
   startTime: Date.now(),
+  loggedIn: false,
 };
 
 // ─── DOM REFS ─────────────────────────────────────────────────────
@@ -80,8 +86,9 @@ const TYPE_PREFIX = {
 
 // ─── WEBSOCKET ────────────────────────────────────────────────────
 function connect() {
+  if (!authToken) return;
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${protocol}://${location.host}`);
+  ws = new WebSocket(`${protocol}://${location.host}?token=${encodeURIComponent(authToken)}`);
 
   ws.addEventListener('open', () => {
     state.connected = true;
@@ -89,8 +96,14 @@ function connect() {
     showToast('📡 Connected to server', 'join');
   });
 
-  ws.addEventListener('close', () => {
+  ws.addEventListener('close', evt => {
     state.connected = false;
+    if (evt.code === 4001) {
+      setConnectionStatus('disconnected', 'Session expired');
+      showToast('❌ Session expired — please log in again', 'error');
+      logout();
+      return;
+    }
     setConnectionStatus('disconnected', 'Disconnected');
     showToast('⚠️ Connection lost — retrying…', 'error');
     setTimeout(connect, 3000);
@@ -108,9 +121,6 @@ function connect() {
       console.warn('[Dashboard] Bad WS message:', e);
     }
   });
-
-  // READ-ONLY — never send anything back to the server
-  // (send is intentionally never called)
 }
 
 // ─── MESSAGE HANDLER ──────────────────────────────────────────────
@@ -386,13 +396,16 @@ $('btn-clear-activity').addEventListener('click', () => {
 // Prevent any accidental form submissions or keyboard shortcuts that
 // could be misused — the dashboard is strictly read-only.
 document.addEventListener('keydown', e => {
+  // Allow typing in login form inputs
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' && document.activeElement.closest('.login-form')) return;
+
   // Allow: Ctrl+C (copy), Ctrl+A (select all), F5 (refresh), Tab, arrows
   const allowed = ['c', 'a', 'f5', 'tab', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'home', 'end', 'pageup', 'pagedown'];
   if (e.ctrlKey && allowed.includes(e.key.toLowerCase())) return;
   if (allowed.includes(e.key.toLowerCase())) return;
   if (e.key === 'F5' || e.key === 'F12') return;
   // Block typing characters into any accidental text field
-  const tag = document.activeElement?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
     e.preventDefault();
   }
@@ -462,6 +475,131 @@ $('server-ip').addEventListener('click', () => {
   });
 });
 
+// ─── LOGIN / LOGOUT ───────────────────────────────────────────────
+const loginOverlay = $('login-overlay');
+const loginForm    = $('login-form');
+const loginError   = $('login-error');
+const loginBtn     = $('login-btn');
+const loginBtnText = loginBtn.querySelector('.login-btn-text');
+const loginBtnLoad = loginBtn.querySelector('.login-btn-loader');
+
+function showLogin() {
+  loginOverlay.classList.remove('hidden');
+  $('login-username').value = '';
+  $('login-password').value = '';
+  loginError.hidden = true;
+  setLoginLoading(false);
+  // Focus username after short delay (animation)
+  setTimeout(() => $('login-username').focus(), 300);
+}
+
+function hideLogin() {
+  loginOverlay.classList.add('hidden');
+}
+
+function setLoginLoading(loading) {
+  loginBtn.disabled = loading;
+  loginBtnText.hidden = loading;
+  loginBtnLoad.hidden = !loading;
+}
+
+function setUserBadge(username) {
+  $('user-name').textContent = username;
+  $('user-badge').hidden = false;
+}
+
+function clearUserBadge() {
+  $('user-badge').hidden = true;
+  $('user-name').textContent = '';
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = $('login-username').value.trim();
+  const password = $('login-password').value;
+
+  if (!username || !password) {
+    loginError.textContent = 'Please enter both username and password.';
+    loginError.hidden = false;
+    return;
+  }
+
+  setLoginLoading(true);
+  loginError.hidden = true;
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      authToken = data.token;
+      authUser = data.username;
+      localStorage.setItem('mcg_token', authToken);
+      localStorage.setItem('mcg_user', authUser);
+      state.loggedIn = true;
+      hideLogin();
+      setUserBadge(authUser);
+      connect();
+      showToast(`✅ Welcome, ${authUser}!`, 'join');
+    } else {
+      loginError.textContent = data.error || 'Invalid username or password.';
+      loginError.hidden = false;
+      $('login-password').value = '';
+      $('login-password').focus();
+    }
+  } catch (err) {
+    loginError.textContent = 'Cannot reach server. Try again later.';
+    loginError.hidden = false;
+  }
+
+  setLoginLoading(false);
+});
+
+function logout() {
+  authToken = null;
+  authUser = null;
+  state.loggedIn = false;
+  localStorage.removeItem('mcg_token');
+  localStorage.removeItem('mcg_user');
+  clearUserBadge();
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+  showLogin();
+}
+
+$('btn-logout').addEventListener('click', logout);
+
 // ─── BOOT ─────────────────────────────────────────────────────────
-connect();
+(async function boot() {
+  // If we have a stored token, verify it first
+  if (authToken) {
+    try {
+      const res = await fetch('/api/verify-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: authToken }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        authUser = data.username;
+        state.loggedIn = true;
+        hideLogin();
+        setUserBadge(authUser);
+        connect();
+        return;
+      }
+    } catch (e) { /* fall through to login */ }
+    // Invalid session — clear and show login
+    authToken = null;
+    localStorage.removeItem('mcg_token');
+    localStorage.removeItem('mcg_user');
+  }
+  showLogin();
+})();
 

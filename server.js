@@ -4,6 +4,10 @@ const WebSocket = require('ws');
 const https = require('https');
 const path = require('path');
 const { Client } = require('ssh2');
+const sqlite3 = require('sqlite3').verbose();
+const crypto = require('crypto');
+const fs = require('fs');
+const url = require('url');
 
 const app = express();
 const server = http.createServer(app);
@@ -313,11 +317,21 @@ function broadcast(data) {
 }
 
 // ─── WS CLIENTS ──────────────────────────────────────────────────────────────
-wss.on('connection', ws => {
-  logDebug('[Dashboard] Browser client connected');
+wss.on('connection', (ws, req) => {
+  const parameters = url.parse(req.url, true).query;
+  const token = parameters.token;
+  const username = verifySession(token);
+
+  if (!username) {
+    logDebug(`[Dashboard] Unauthorized WS connection attempt rejected. IP: ${req.socket.remoteAddress}`);
+    ws.close(4001, 'Unauthorized');
+    return;
+  }
+
+  logDebug(`[Dashboard] Browser client connected for player: ${username}`);
   ws.send(JSON.stringify({ type: 'init', serverInfo, consoleLogs, activityFeed }));
   ws.on('message', () => { /* READ-ONLY — drop all messages */ });
-  ws.on('close', () => logDebug('[Dashboard] Browser client disconnected'));
+  ws.on('close', () => logDebug(`[Dashboard] Browser client disconnected for player: ${username}`));
 });
 
 // ─── DEBUG / DIAGNOSTICS ──────────────────────────────────────────────────────
@@ -357,6 +371,128 @@ app.post('/api/error-report', (req, res) => {
   const { message, source, lineno, colno, error } = req.body;
   logDebug(`[Client Error] Msg: ${message} | Src: ${source}:${lineno}:${colno} | Stack: ${error}`);
   res.json({ ok: true });
+});
+
+// ─── AUTH / DATABASE HELPERS ──────────────────────────────────────────────────
+const DB_LOCAL_PATH = '/tmp/authme.db';
+let dbSyncTime = 0;
+const activeSessions = new Map(); // token -> username
+
+// Synchronize AuthMe DB from remote SFTP server
+function syncAuthDb() {
+  return new Promise((resolve, reject) => {
+    if (!sftpConn) {
+      return reject(new Error('SFTP client is not connected to Minecraft server'));
+    }
+
+    const now = Date.now();
+    // Cache database for 2 minutes
+    if (fs.existsSync(DB_LOCAL_PATH) && (now - dbSyncTime < 120000)) {
+      return resolve(DB_LOCAL_PATH);
+    }
+
+    sftpConn.sftp((err, sftp) => {
+      if (err) return reject(new Error(`SFTP Session failed: ${err.message}`));
+      logDebug('[SFTP] Synchronizing authme.db database...');
+      sftp.fastGet('plugins/AuthMe/authme.db', DB_LOCAL_PATH, {}, (err) => {
+        if (err) {
+          logDebug(`[SFTP] Database sync failed: ${err.message}`);
+          reject(err);
+        } else {
+          dbSyncTime = Date.now();
+          logDebug('[SFTP] authme.db synchronized successfully');
+          resolve(DB_LOCAL_PATH);
+        }
+      });
+    });
+  });
+}
+
+// Verify password against AuthMe SHA256 format
+function verifyAuthMePassword(hash, password) {
+  if (!hash || !hash.startsWith('$SHA$')) {
+    return false;
+  }
+  const parts = hash.split('$');
+  if (parts.length < 4) return false;
+
+  const salt = parts[2];
+  const storedHash = parts[3];
+
+  const hash1 = crypto.createHash('sha256').update(password).digest('hex');
+  const hash2 = crypto.createHash('sha256').update(hash1 + salt).digest('hex');
+
+  return hash2 === storedHash;
+}
+
+// Verify credentials from SQLite
+function authenticatePlayer(username, password) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      await syncAuthDb();
+      
+      const db = new sqlite3.Database(DB_LOCAL_PATH, sqlite3.OPEN_READONLY, (err) => {
+        if (err) return reject(new Error(`SQLite open error: ${err.message}`));
+      });
+
+      db.get('SELECT password, realname FROM authme WHERE username = ?', [username.toLowerCase()], (err, row) => {
+        db.close();
+        if (err) return reject(new Error(`Database query error: ${err.message}`));
+        if (!row) return resolve(null); // User not found
+
+        const isValid = verifyAuthMePassword(row.password, password);
+        if (isValid) {
+          resolve({ username: row.realname });
+        } else {
+          resolve(null); // Wrong password
+        }
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+function createSession(username) {
+  const token = crypto.randomBytes(32).toString('hex');
+  activeSessions.set(token, username);
+  return token;
+}
+
+function verifySession(token) {
+  if (!token) return null;
+  return activeSessions.get(token) || null;
+}
+
+// ─── LOGIN ROUTES ─────────────────────────────────────────────────────────────
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, error: 'Missing username or password' });
+  }
+
+  try {
+    const user = await authenticatePlayer(username, password);
+    if (user) {
+      const token = createSession(user.username);
+      res.json({ ok: true, token, username: user.username });
+    } else {
+      res.status(401).json({ ok: false, error: 'Invalid username or password' });
+    }
+  } catch (err) {
+    logDebug(`[Login Error] ${err.message}`);
+    res.status(500).json({ ok: false, error: 'Authentication database error' });
+  }
+});
+
+app.post('/api/verify-session', (req, res) => {
+  const { token } = req.body;
+  const username = verifySession(token);
+  if (username) {
+    res.json({ ok: true, username });
+  } else {
+    res.status(401).json({ ok: false, error: 'Invalid session' });
+  }
 });
 
 // ─── SFTP TAILING LOGIC (Cloudflare Bypass) ───────────────────────────────────

@@ -8,12 +8,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
   <!-- ── BACKGROUND PARTICLES ── -->
   <canvas id="particles-canvas"></canvas>
+
+  <!-- ── LOGIN OVERLAY ── -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-icon">⛏️</div>
+      <h2 class="login-title">Minecrafter Gang</h2>
+      <p class="login-subtitle">Sign in with your Minecraft credentials</p>
+      <form id="login-form" class="login-form" autocomplete="off">
+        <div class="input-group">
+          <label for="login-username">Minecraft Username</label>
+          <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username" required />
+        </div>
+        <div class="input-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="Enter your AuthMe password" autocomplete="current-password" required />
+        </div>
+        <div id="login-error" class="login-error" hidden></div>
+        <button type="submit" id="login-btn" class="login-btn">
+          <span class="login-btn-text">Sign In</span>
+          <span class="login-btn-loader" hidden>
+            <span class="spinner"></span> Authenticating…
+          </span>
+        </button>
+      </form>
+      <p class="login-hint">Use your in-game AuthMe password to log in.</p>
+    </div>
+  </div>
 
   <!-- ── HEADER ── -->
   <header class="site-header">
@@ -31,6 +58,11 @@
           <span class="status-label">Connecting…</span>
         </div>
         <div class="server-time" id="server-time">--:--:--</div>
+        <div class="user-badge" id="user-badge" hidden>
+          <span class="user-avatar">🧑</span>
+          <span class="user-name" id="user-name"></span>
+          <button class="btn-logout" id="btn-logout" title="Sign out">⏻</button>
+        </div>
       </div>
     </div>
   </header>
@@ -153,6 +185,6 @@
   <!-- ── TOAST NOTIFICATIONS ── -->
   <div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
