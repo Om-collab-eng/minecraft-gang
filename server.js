@@ -312,10 +312,10 @@ function broadcast(data) {
 
 // ─── WS CLIENTS ──────────────────────────────────────────────────────────────
 wss.on('connection', ws => {
-  console.log('[Dashboard] Browser client connected');
+  logDebug('[Dashboard] Browser client connected');
   ws.send(JSON.stringify({ type: 'init', serverInfo, consoleLogs, activityFeed }));
   ws.on('message', () => { /* READ-ONLY — drop all messages */ });
-  ws.on('close', () => console.log('[Dashboard] Browser client disconnected'));
+  ws.on('close', () => logDebug('[Dashboard] Browser client disconnected'));
 });
 
 // ─── DEBUG / DIAGNOSTICS ──────────────────────────────────────────────────────
