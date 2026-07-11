@@ -5,6 +5,20 @@
 
 'use strict';
 
+window.onerror = function(message, source, lineno, colno, error) {
+  fetch('/api/error-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      source,
+      lineno,
+      colno,
+      error: error ? error.stack : null
+    })
+  }).catch(() => {});
+};
+
 // ─── STATE ───────────────────────────────────────────────────────
 const state = {
   connected: false,

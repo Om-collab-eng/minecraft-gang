@@ -9,6 +9,8 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
+app.use(express.json());
+
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const PANEL_URL    = process.env.PANEL_URL    || 'https://panel.skilloraclouds.com';
 const API_KEY      = process.env.API_KEY      || 'ptlc_LPQgGvrbQdE';
@@ -349,6 +351,12 @@ app.get('/api/debug', async (req, res) => {
   } catch (e) {
     res.json({ ok: false, error: e.message, debugLogs, consoleLogsCount: consoleLogs.length });
   }
+});
+
+app.post('/api/error-report', (req, res) => {
+  const { message, source, lineno, colno, error } = req.body;
+  logDebug(`[Client Error] Msg: ${message} | Src: ${source}:${lineno}:${colno} | Stack: ${error}`);
+  res.json({ ok: true });
 });
 
 // ─── SFTP TAILING LOGIC (Cloudflare Bypass) ───────────────────────────────────
