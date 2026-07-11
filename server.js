@@ -495,6 +495,165 @@ app.post('/api/verify-session', (req, res) => {
   }
 });
 
+// ─── PLAYER STATS (via SFTP) ─────────────────────────────────────────────────
+function sftpReadFile(remotePath) {
+  return new Promise((resolve, reject) => {
+    if (!sftpConn) return reject(new Error('SFTP not connected'));
+    sftpConn.sftp((err, sftp) => {
+      if (err) return reject(err);
+      sftp.readFile(remotePath, 'utf8', (err, data) => {
+        if (err) return reject(err);
+        resolve(data);
+      });
+    });
+  });
+}
+
+async function getPlayerUUID(username) {
+  try {
+    const https = require('https');
+    return await new Promise((resolve, reject) => {
+      https.get(`https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(username)}`, res => {
+        let data = '';
+        res.on('data', c => { data += c; });
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(data);
+            if (j && j.id) resolve(j.id);
+            else resolve(null);
+          } catch { resolve(null); }
+        });
+      }).on('error', () => resolve(null));
+    });
+  } catch { return null; }
+}
+
+function parseSimpleYml(text) {
+  const out = {};
+  for (const line of text.split('\n')) {
+    const m = line.match(/^(\w[\w-]*):\s*(.+)$/);
+    if (m) out[m[1]] = m[2].trim();
+  }
+  return out;
+}
+
+function parseVanillaStats(text) {
+  try {
+    const json = JSON.parse(text);
+    const stats = json.stats || json;
+    // Could be under "minecraft:custom" or "minecraft:player"
+    const custom = stats['minecraft:custom'] || {};
+    const player = stats['minecraft:player'] || {};
+    const mined = stats['minecraft:mined'] || {};
+    const killed = stats['minecraft:killed'] || {};
+    const crafted = stats['minecraft:crafted'] || {};
+    return { custom, player, mined, killed, crafted };
+  } catch { return null; }
+}
+
+app.get('/api/player-stats/:username', async (req, res) => {
+  const { username } = req.params;
+  const token = req.query.token || req.headers['x-auth-token'];
+  if (!verifySession(token)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
+  if (!sftpConn) {
+    return res.status(503).json({ ok: false, error: 'SFTP not connected' });
+  }
+
+  try {
+    // Get UUID from Mojang
+    const uuid = await getPlayerUUID(username);
+    if (!uuid) {
+      return res.json({ ok: true, stats: { username, found: false } });
+    }
+
+    // Format UUID with dashes for file paths
+    const uuidDashed = uuid.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+    const uuidRaw = uuid; // no dashes
+
+    const stats = { username, uuid, found: true };
+
+    // Try EssentialsX userdata (health, hunger, level, first/last login)
+    try {
+      const essData = await sftpReadFile(`plugins/Essentials/userdata/${uuidRaw}.yml`);
+      const yml = parseSimpleYml(essData);
+      stats.health = parseInt(yml.health) || 20;
+      stats.hunger = parseInt(yml.food) || 20;
+      stats.level = parseInt(yml.level) || 0;
+      stats.firstLogin = yml['first-login'] || null;
+      stats.lastLogin = yml['last-login'] || null;
+      stats.lastLoginIP = yml['last-login-address'] || null;
+      // Essentials stores playtime in seconds as 'time-played'
+      const tp = parseInt(yml['time-played']) || 0;
+      stats.timePlayed = tp;
+    } catch {
+      stats.health = null;
+    }
+
+    // Try vanilla stats JSON (deaths, kills, play_time)
+    try {
+      const vanillaPath = `world/stats/${uuidDashed}.json`;
+      const vanillaData = await sftpReadFile(vanillaPath);
+      const parsed = parseVanillaStats(vanillaData);
+      if (parsed) {
+        stats.deaths = parsed.custom['minecraft:deaths'] || 0;
+        stats.mobKills = parsed.custom['minecraft:mob_kills'] || 0;
+        stats.playerKills = parsed.custom['minecraft:player_kills'] || 0;
+        stats.damageDealt = parsed.custom['minecraft:damage_dealt'] || 0;
+        stats.damageTaken = parsed.custom['minecraft:damage_taken'] || 0;
+        stats.playTimeTicks = parsed.custom['minecraft:play_time'] || 0;
+        // 20 ticks = 1 second
+        if (!stats.timePlayed && stats.playTimeTicks) {
+          stats.timePlayed = Math.floor(stats.playTimeTicks / 20);
+        }
+        stats.joins = parsed.custom['minecraft:leave_game'] || 0;
+        stats.walked = parsed.custom['minecraft:walked_one_cm'] || 0;
+        stats.jumped = parsed.custom['minecraft:jump'] || 0;
+      }
+    } catch {
+      // Vanilla stats file may not exist
+    }
+
+    // Try player .dat for exact health (NBT binary, parse basic fields)
+    try {
+      const datPath = `world/playerdata/${uuidDashed}.dat`;
+      const datBuf = await sftpReadFileRaw(datPath);
+      if (datBuf && stats.health === null) {
+        // Basic NBT scan for health attribute (TAG_Double named "generic.max_health" / "Health")
+        // We'll just try to find the float value after 'Health' tag name
+        const str = datBuf.toString('latin1');
+        const healthIdx = str.indexOf('Health');
+        if (healthIdx !== -1) {
+          // TAG_Float follows the name, next 4 bytes are the float
+          stats.health = Math.round(datBuf.readFloatBE(healthIdx + 7));
+        }
+      }
+    } catch {
+      // .dat may not exist
+    }
+
+    return res.json({ ok: true, stats });
+  } catch (e) {
+    logDebug(`[Player Stats] Error: ${e.message}`);
+    return res.status(500).json({ ok: false, error: 'Failed to fetch player stats' });
+  }
+});
+
+function sftpReadFileRaw(remotePath) {
+  return new Promise((resolve, reject) => {
+    if (!sftpConn) return reject(new Error('SFTP not connected'));
+    sftpConn.sftp((err, sftp) => {
+      if (err) return reject(err);
+      sftp.readFile(remotePath, (err, data) => {
+        if (err) return reject(err);
+        resolve(data);
+      });
+    });
+  });
+}
+
 // ─── SFTP TAILING LOGIC (Cloudflare Bypass) ───────────────────────────────────
 let sftpConn = null;
 let sftpLastSize = 0;

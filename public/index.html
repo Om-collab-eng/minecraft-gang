@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
 
@@ -182,9 +182,78 @@
 
   </main>
 
+  <!-- ── PLAYER PROFILE POPUP ── -->
+  <div id="profile-overlay" class="profile-overlay hidden">
+    <div class="profile-card">
+      <button class="profile-close" id="profile-close">✕</button>
+      <div class="profile-header">
+        <div class="profile-skin" id="profile-skin"></div>
+        <div class="profile-name" id="profile-name">—</div>
+        <div class="profile-uuid" id="profile-uuid">—</div>
+      </div>
+      <div class="profile-stats" id="profile-stats">
+        <div class="stat-row">
+          <span class="stat-icon">❤️</span>
+          <span class="stat-label">Health</span>
+          <span class="stat-value" id="stat-health">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🍖</span>
+          <span class="stat-label">Hunger</span>
+          <span class="stat-value" id="stat-hunger">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">⏱️</span>
+          <span class="stat-label">Time Played</span>
+          <span class="stat-value" id="stat-playtime">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">💀</span>
+          <span class="stat-label">Deaths</span>
+          <span class="stat-value" id="stat-deaths">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">⚔️</span>
+          <span class="stat-label">Mob Kills</span>
+          <span class="stat-value" id="stat-mobkills">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🗡️</span>
+          <span class="stat-label">Player Kills</span>
+          <span class="stat-value" id="stat-playerkills">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">💥</span>
+          <span class="stat-label">Damage Dealt</span>
+          <span class="stat-value" id="stat-damagedealt">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🩸</span>
+          <span class="stat-label">Damage Taken</span>
+          <span class="stat-value" id="stat-damagetaken">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">📊</span>
+          <span class="stat-label">Joins</span>
+          <span class="stat-value" id="stat-joins">—</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-icon">🌟</span>
+          <span class="stat-label">XP Level</span>
+          <span class="stat-value" id="stat-level">—</span>
+        </div>
+      </div>
+      <div class="profile-loading" id="profile-loading">
+        <span class="spinner-lg"></span>
+        <span>Loading stats…</span>
+      </div>
+      <div class="profile-error" id="profile-error" hidden></div>
+    </div>
+  </div>
+
   <!-- ── TOAST NOTIFICATIONS ── -->
   <div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

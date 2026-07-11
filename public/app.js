@@ -272,6 +272,7 @@ function updatePlayerList(players) {
   players.forEach(name => {
     const item = document.createElement('div');
     item.className = 'player-item';
+    item.addEventListener('click', () => openProfile(name));
 
     const avatar = document.createElement('div');
     avatar.className = 'player-avatar';
@@ -574,6 +575,92 @@ function logout() {
 }
 
 $('btn-logout').addEventListener('click', logout);
+
+// ─── PLAYER PROFILE POPUP ─────────────────────────────────────────
+const profileOverlay = $('profile-overlay');
+const profileLoading = $('profile-loading');
+const profileError   = $('profile-error');
+const profileStats   = $('profile-stats');
+
+function openProfile(username) {
+  profileOverlay.classList.remove('hidden');
+  profileLoading.classList.remove('hidden');
+  profileError.hidden = true;
+  profileStats.style.display = 'none';
+  $('profile-name').textContent = username;
+  $('profile-uuid').textContent = 'Loading…';
+  $('profile-skin').innerHTML = '';
+
+  // Load skin
+  const skinImg = document.createElement('img');
+  skinImg.src = `https://minotar.net/armor/body/${encodeURIComponent(username)}/192`;
+  skinImg.alt = username;
+  skinImg.onerror = () => { $('profile-skin').innerHTML = '<span style="font-size:2.5rem">🧑</span>'; };
+  skinImg.onload = () => { $('profile-skin').innerHTML = ''; $('profile-skin').appendChild(skinImg); };
+  $('profile-skin').appendChild(skinImg);
+
+  fetchPlayerStats(username);
+}
+
+function closeProfile() {
+  profileOverlay.classList.add('hidden');
+}
+
+$('profile-close').addEventListener('click', closeProfile);
+profileOverlay.addEventListener('click', e => {
+  if (e.target === profileOverlay) closeProfile();
+});
+
+async function fetchPlayerStats(username) {
+  try {
+    const res = await fetch(`/api/player-stats/${encodeURIComponent(username)}?token=${encodeURIComponent(authToken)}`);
+    const data = await res.json();
+
+    if (!data.ok || !data.stats.found) {
+      profileLoading.classList.add('hidden');
+      profileError.textContent = 'Player data not found on server.';
+      profileError.hidden = false;
+      return;
+    }
+
+    const s = data.stats;
+    $('profile-uuid').textContent = s.uuid || '—';
+
+    setText('stat-health', s.health !== null && s.health !== undefined ? `${s.health} / 20` : '—');
+    setText('stat-hunger', s.hunger !== null && s.hunger !== undefined ? `${s.hunger} / 20` : '—');
+    setText('stat-playtime', formatPlayTime(s.timePlayed));
+    setText('stat-deaths', s.deaths ?? '—');
+    setText('stat-mobkills', s.mobKills ?? '—');
+    setText('stat-playerkills', s.playerKills ?? '—');
+    setText('stat-damagedealt', s.damageDealt ? Math.round(s.damageDealt).toLocaleString() : '—');
+    setText('stat-damagetaken', s.damageTaken ? Math.round(s.damageTaken).toLocaleString() : '—');
+    setText('stat-joins', s.joins ?? '—');
+    setText('stat-level', s.level ?? '—');
+
+    // Color health
+    const healthEl = $('stat-health');
+    if (s.health !== null) {
+      healthEl.style.color = s.health > 14 ? 'var(--accent-green)' : s.health > 6 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+    }
+
+    profileLoading.classList.add('hidden');
+    profileStats.style.display = 'flex';
+  } catch (err) {
+    profileLoading.classList.add('hidden');
+    profileError.textContent = 'Failed to load player stats.';
+    profileError.hidden = false;
+  }
+}
+
+function formatPlayTime(seconds) {
+  if (!seconds || seconds === 0) return '—';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
 
 // ─── BOOT ─────────────────────────────────────────────────────────
 (async function boot() {
