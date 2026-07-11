@@ -571,7 +571,7 @@ function logout() {
     ws.close();
     ws = null;
   }
-  showLogin();
+  window.location.href = '/login.html';
 }
 
 $('btn-logout').addEventListener('click', logout);
@@ -664,29 +664,36 @@ function formatPlayTime(seconds) {
 
 // ─── BOOT ─────────────────────────────────────────────────────────
 (async function boot() {
-  // If we have a stored token, verify it first
-  if (authToken) {
-    try {
-      const res = await fetch('/api/verify-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: authToken }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        authUser = data.username;
-        state.loggedIn = true;
-        hideLogin();
-        setUserBadge(authUser);
-        connect();
-        return;
-      }
-    } catch (e) { /* fall through to login */ }
-    // Invalid session — clear and show login
-    authToken = null;
-    localStorage.removeItem('mcg_token');
-    localStorage.removeItem('mcg_user');
-  }
-  showLogin();
-})();
+  const token = localStorage.getItem('mcg_token');
 
+  if (!token) {
+    // No token at all — go to login page
+    window.location.href = '/login.html';
+    return;
+  }
+
+  authToken = token;
+
+  try {
+    const res = await fetch('/api/verify-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      authUser = data.username;
+      state.loggedIn = true;
+      hideLogin();
+      setUserBadge(authUser);
+      connect();
+      return;
+    }
+  } catch (e) { /* fall through to redirect */ }
+
+  // Invalid / expired session — clear and redirect to login
+  localStorage.removeItem('mcg_token');
+  localStorage.removeItem('mcg_user');
+  window.location.href = '/login.html';
+})();

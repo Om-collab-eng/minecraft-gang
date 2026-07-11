@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minecrafter Gang — Login</title>
+  <meta name="description" content="Login to the Minecrafter Gang server dashboard using your Minecraft username and AuthMe password." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-deepest:    #080c10;
+      --bg-deep:       #0d1117;
+      --bg-card:       rgba(14, 22, 38, 0.92);
+      --glass-border:  rgba(88, 160, 255, 0.12);
+      --glass-shine:   rgba(255, 255, 255, 0.04);
+      --accent-green:  #22c55e;
+      --accent-blue:   #3b82f6;
+      --accent-purple: #a855f7;
+      --accent-red:    #ef4444;
+      --accent-cyan:   #06b6d4;
+      --text-primary:  #e2e8f0;
+      --text-secondary:#94a3b8;
+      --text-muted:    #475569;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-deepest);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    /* ── PARTICLES ── */
+    #particles-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.5;
+    }
+
+    /* ── MAIN WRAPPER ── */
+    .login-wrapper {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+
+    /* ── CARD ── */
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-card);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 2.5rem 2.25rem;
+      backdrop-filter: blur(20px);
+      box-shadow:
+        0 32px 64px rgba(0,0,0,0.5),
+        0 1px 0 var(--glass-shine) inset;
+      animation: cardIn 0.5s cubic-bezier(0.22,1,0.36,1);
+    }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(24px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ── LOGO ── */
+    .login-logo {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .logo-icon {
+      font-size: 3.5rem;
+      display: block;
+      animation: float 3s ease-in-out infinite;
+      filter: drop-shadow(0 0 18px rgba(34,197,94,0.6));
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-8px); }
+    }
+
+    .logo-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #34d399, #3b82f6, #a855f7);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+      margin-top: 0.6rem;
+    }
+
+    .logo-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── FORM ── */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1rem;
+      pointer-events: none;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 13px 14px 13px 42px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(88,160,255,0.15);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: rgba(59,130,246,0.5);
+      background: rgba(59,130,246,0.05);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+    }
+
+    input::placeholder { color: var(--text-muted); }
+
+    /* ── ERROR ── */
+    .error-box {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: #fca5a5;
+      font-size: 0.82rem;
+      margin-bottom: 1.25rem;
+      animation: shake 0.35s ease;
+    }
+
+    .error-box.visible { display: flex; }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%,60% { transform: translateX(-6px); }
+      40%,80% { transform: translateX(6px); }
+    }
+
+    /* ── BUTTON ── */
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+      box-shadow: 0 4px 20px rgba(34,197,94,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-login:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(34,197,94,0.4);
+    }
+
+    .btn-login:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* ── SPINNER ── */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .btn-login.loading .spinner { display: block; }
+    .btn-login.loading .btn-text { display: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── DIVIDER / HINT ── */
+    .login-hint {
+      text-align: center;
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-top: 1.25rem;
+      line-height: 1.6;
+    }
+
+    .login-hint strong { color: var(--text-secondary); }
+
+    /* ── SUCCESS OVERLAY ── */
+    .success-overlay {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .success-overlay.visible { display: flex; }
+    .success-overlay.visible ~ * { display: none; }
+
+    .success-icon {
+      font-size: 3.5rem;
+      animation: popIn 0.5s cubic-bezier(0.22,1,0.36,1);
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+
+    .success-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--accent-green);
+    }
+
+    .success-sub {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* ── BADGE ── */
+    .server-ip-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(34,197,94,0.08);
+      border: 1px solid rgba(34,197,94,0.2);
+      border-radius: 999px;
+      padding: 5px 14px;
+      font-size: 0.8rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--accent-green);
+      margin: 0.5rem 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="particles-canvas"></canvas>
+
+  <div class="login-wrapper">
+    <div class="login-card">
+
+      <!-- Logo -->
+      <div class="login-logo">
+        <span class="logo-icon">⛏️</span>
+        <div class="logo-title">Minecrafter Gang</div>
+        <div class="logo-sub">Server Dashboard · Login</div>
+        <div class="server-ip-badge">📍 lifesteal.skilloraclouds.com</div>
+      </div>
+
+      <!-- Success overlay (shown after login) -->
+      <div class="success-overlay" id="success-overlay">
+        <div class="success-icon">✅</div>
+        <div class="success-title">Welcome back, <span id="success-username"></span>!</div>
+        <div class="success-sub">Redirecting to dashboard…</div>
+      </div>
+
+      <!-- Error box -->
+      <div class="error-box" id="error-box" role="alert">
+        <span>⚠️</span>
+        <span id="error-msg">Invalid username or password.</span>
+      </div>
+
+      <!-- Login form -->
+      <form id="login-form" autocomplete="off" novalidate>
+        <div class="form-group">
+          <label for="username">Minecraft Username</label>
+          <div class="input-wrap">
+            <span class="input-icon">🧑</span>
+            <input
+              type="text"
+              id="username"
+              name="username"
+              placeholder="YourIngameName"
+              autocomplete="username"
+              spellcheck="false"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">AuthMe Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔑</span>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              placeholder="Your /register password"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+        </div>
+
+        <button class="btn-login" type="submit" id="login-btn">
+          <div class="spinner"></div>
+          <span class="btn-text">🚀 Login to Dashboard</span>
+        </button>
+      </form>
+
+      <div class="login-hint">
+        Use the same <strong>username</strong> and <strong>password</strong><br>
+        you registered with <strong>/register</strong> on the server.
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    /* ── PARTICLES ── */
+    (function() {
+      const canvas = document.getElementById('particles-canvas');
+      const ctx = canvas.getContext('2d');
+      let W, H, particles;
+
+      function resize() { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+      function rnd() { return { x: Math.random()*W, y: Math.random()*H, vx: (Math.random()-0.5)*0.3, vy: (Math.random()-0.5)*0.3-0.1, r: Math.random()*1.5+0.5, alpha: Math.random()*0.4+0.1, color: ['#34d399','#3b82f6','#a855f7','#06b6d4'][Math.floor(Math.random()*4)] }; }
+      function init() { resize(); particles = Array.from({length:70}, rnd); }
+      function draw() {
+        ctx.clearRect(0,0,W,H);
+        particles.forEach(p => { ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle=p.color; ctx.globalAlpha=p.alpha; ctx.fill(); p.x+=p.vx; p.y+=p.vy; if(p.y<-5||p.x<-5||p.x>W+5) Object.assign(p,rnd(),{y:H+5,x:Math.random()*W}); });
+        ctx.globalAlpha=1;
+        requestAnimationFrame(draw);
+      }
+      window.addEventListener('resize', resize);
+      init(); draw();
+    })();
+
+    /* ── LOGIN LOGIC ── */
+    const form    = document.getElementById('login-form');
+    const btn     = document.getElementById('login-btn');
+    const errBox  = document.getElementById('error-box');
+    const errMsg  = document.getElementById('error-msg');
+    const success = document.getElementById('success-overlay');
+    const successName = document.getElementById('success-username');
+
+    function showError(msg) {
+      errMsg.textContent = msg;
+      errBox.classList.remove('visible');
+      void errBox.offsetWidth; // reflow to re-trigger animation
+      errBox.classList.add('visible');
+    }
+
+    function setLoading(on) {
+      btn.disabled = on;
+      btn.classList.toggle('loading', on);
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errBox.classList.remove('visible');
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        showError('Please enter both your username and password.');
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (data.ok && data.token) {
+          // Store session
+          localStorage.setItem('mcg_token', data.token);
+          localStorage.setItem('mcg_user', data.username);
+
+          // Show success
+          successName.textContent = data.username;
+          form.style.display = 'none';
+          document.querySelector('.login-hint').style.display = 'none';
+          errBox.classList.remove('visible');
+          success.classList.add('visible');
+
+          // Redirect to dashboard
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1500);
+        } else {
+          showError(data.error || 'Invalid username or password.');
+          setLoading(false);
+        }
+      } catch (err) {
+        showError('Could not connect to server. Please try again.');
+        setLoading(false);
+      }
+    });
+
+    // If already logged in, redirect immediately
+    (async () => {
+      const token = localStorage.getItem('mcg_token');
+      if (!token) return;
+
+      try {
+        const res = await fetch('/api/verify-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          window.location.href = '/';
+        }
+      } catch (_) { /* ignore, stay on login page */ }
+    })();
+  </script>
+</body>
+</html>
