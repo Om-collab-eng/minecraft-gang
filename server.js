@@ -373,17 +373,28 @@ function startSftpTailing() {
       }
 
       logDebug('[SFTP] SFTP session ready. Tail monitoring started.');
-      const logFile = '/logs/latest.log';
+      
+      // Print files in the root folder to see structure
+      sftp.readdir('.', (err, list) => {
+        if (err) {
+          logDebug(`[SFTP] readdir '.' failed: ${err.message}`);
+        } else {
+          const fileNames = list.map(f => f.filename).join(', ');
+          logDebug(`[SFTP] Files in root folder: ${fileNames}`);
+        }
+      });
+
+      const logFile = 'logs/latest.log'; // relative path without leading slash
 
       async function checkLog() {
         sftp.stat(logFile, (err, stats) => {
           if (err) {
-            // file may not exist yet or still loading
+            logDebug(`[SFTP] stat '${logFile}' failed: ${err.message}`);
             return;
           }
 
           if (sftpLastSize === 0) {
-            // First run: read last 10KB
+            logDebug(`[SFTP] Initializing tail. File size is ${stats.size} bytes.`);
             const size = stats.size;
             const start = Math.max(0, size - 12000);
             sftpReadChunk(sftp, logFile, start, size);
@@ -392,7 +403,7 @@ function startSftpTailing() {
             sftpReadChunk(sftp, logFile, sftpLastSize, stats.size);
             sftpLastSize = stats.size;
           } else if (stats.size < sftpLastSize) {
-            // log rotated or cleared
+            logDebug(`[SFTP] Log file size decreased (rotated or cleared). Resetting.`);
             sftpLastSize = 0;
           }
         });
