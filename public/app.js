@@ -5,12 +5,33 @@
 
 'use strict';
 
+// Intercept client-side warnings and errors
+const originalWarn = console.warn;
+console.warn = function(...args) {
+  originalWarn.apply(console, args);
+  fetch('/api/error-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `[Console Warning] ${args.join(' ')}`, source: 'console.warn' })
+  }).catch(() => {});
+};
+
+const originalError = console.error;
+console.error = function(...args) {
+  originalError.apply(console, args);
+  fetch('/api/error-report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `[Console Error] ${args.join(' ')}`, source: 'console.error' })
+  }).catch(() => {});
+};
+
 window.onerror = function(message, source, lineno, colno, error) {
   fetch('/api/error-report', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      message,
+      message: `[Uncaught Exception] ${message}`,
       source,
       lineno,
       colno,
