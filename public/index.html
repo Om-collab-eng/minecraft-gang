@@ -4,45 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Minecrafter Gang — Server Dashboard</title>
-  <meta name="description" content="Real-time read-only dashboard for the Minecrafter Gang Minecraft server. Monitor console output, player activity, and server stats live." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
 
-  <!-- ── BACKGROUND PARTICLES ── -->
   <canvas id="particles-canvas"></canvas>
 
-  <!-- ── LOGIN OVERLAY ── -->
-  <div id="login-overlay" class="login-overlay">
-    <div class="login-card">
-      <div class="login-icon">⛏️</div>
-      <h2 class="login-title">Minecrafter Gang</h2>
-      <p class="login-subtitle">Sign in with your Minecraft credentials</p>
-      <form id="login-form" class="login-form" autocomplete="off">
-        <div class="input-group">
-          <label for="login-username">Minecraft Username</label>
-          <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username" required />
-        </div>
-        <div class="input-group">
-          <label for="login-password">Password</label>
-          <input type="password" id="login-password" placeholder="Enter your AuthMe password" autocomplete="current-password" required />
-        </div>
-        <div id="login-error" class="login-error" hidden></div>
-        <button type="submit" id="login-btn" class="login-btn">
-          <span class="login-btn-text">Sign In</span>
-          <span class="login-btn-loader" hidden>
-            <span class="spinner"></span> Authenticating…
-          </span>
-        </button>
-      </form>
-      <p class="login-hint">Use your in-game AuthMe password to log in.</p>
-    </div>
-  </div>
-
-  <!-- ── HEADER ── -->
   <header class="site-header">
     <div class="header-inner">
       <div class="brand">
@@ -58,19 +28,11 @@
           <span class="status-label">Connecting…</span>
         </div>
         <div class="server-time" id="server-time">--:--:--</div>
-        <div class="user-badge" id="user-badge" hidden>
-          <span class="user-avatar">🧑</span>
-          <span class="user-name" id="user-name"></span>
-          <button class="btn-logout" id="btn-logout" title="Sign out">⏻</button>
-        </div>
       </div>
     </div>
   </header>
 
-  <!-- ── MAIN LAYOUT ── -->
   <main class="dashboard">
-
-    <!-- ── ROW 1: SERVER INFO CARDS ── -->
     <section class="info-strip">
       <div class="info-card" id="card-status">
         <div class="card-icon">🟢</div>
@@ -79,7 +41,6 @@
           <div class="card-label">Server Status</div>
         </div>
       </div>
-
       <div class="info-card" id="card-players">
         <div class="card-icon">👥</div>
         <div class="card-body">
@@ -87,7 +48,6 @@
           <div class="card-label">Players Online</div>
         </div>
       </div>
-
       <div class="info-card" id="card-version">
         <div class="card-icon">📦</div>
         <div class="card-body">
@@ -95,7 +55,6 @@
           <div class="card-label">MC Version</div>
         </div>
       </div>
-
       <div class="info-card" id="card-tps">
         <div class="card-icon">⚡</div>
         <div class="card-body">
@@ -103,7 +62,6 @@
           <div class="card-label">TPS</div>
         </div>
       </div>
-
       <div class="info-card" id="card-memory">
         <div class="card-icon">💾</div>
         <div class="card-body">
@@ -111,7 +69,6 @@
           <div class="card-label">Memory Used</div>
         </div>
       </div>
-
       <div class="info-card" id="card-uptime">
         <div class="card-icon">⏱️</div>
         <div class="card-body">
@@ -121,10 +78,7 @@
       </div>
     </section>
 
-    <!-- ── ROW 2: MAIN PANELS ── -->
     <div class="panels-row">
-
-      <!-- ── LEFT: CONSOLE ── -->
       <section class="panel panel-console">
         <div class="panel-header">
           <div class="panel-title">
@@ -147,10 +101,7 @@
         </div>
       </section>
 
-      <!-- ── RIGHT: SIDEBAR ── -->
       <aside class="sidebar">
-
-        <!-- Online Players -->
         <section class="panel panel-players">
           <div class="panel-header">
             <div class="panel-title">
@@ -163,7 +114,6 @@
           </div>
         </section>
 
-        <!-- Activity Feed -->
         <section class="panel panel-activity">
           <div class="panel-header">
             <div class="panel-title">
@@ -176,13 +126,10 @@
             <div class="empty-state">Waiting for activity…</div>
           </div>
         </section>
-
       </aside>
     </div>
-
   </main>
 
-  <!-- ── PLAYER PROFILE POPUP ── -->
   <div id="profile-overlay" class="profile-overlay hidden">
     <div class="profile-card">
       <button class="profile-close" id="profile-close">✕</button>
@@ -192,68 +139,24 @@
         <div class="profile-uuid" id="profile-uuid">—</div>
       </div>
       <div class="profile-stats" id="profile-stats">
-        <div class="stat-row">
-          <span class="stat-icon">❤️</span>
-          <span class="stat-label">Health</span>
-          <span class="stat-value" id="stat-health">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">🍖</span>
-          <span class="stat-label">Hunger</span>
-          <span class="stat-value" id="stat-hunger">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">⏱️</span>
-          <span class="stat-label">Time Played</span>
-          <span class="stat-value" id="stat-playtime">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">💀</span>
-          <span class="stat-label">Deaths</span>
-          <span class="stat-value" id="stat-deaths">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">⚔️</span>
-          <span class="stat-label">Mob Kills</span>
-          <span class="stat-value" id="stat-mobkills">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">🗡️</span>
-          <span class="stat-label">Player Kills</span>
-          <span class="stat-value" id="stat-playerkills">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">💥</span>
-          <span class="stat-label">Damage Dealt</span>
-          <span class="stat-value" id="stat-damagedealt">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">🩸</span>
-          <span class="stat-label">Damage Taken</span>
-          <span class="stat-value" id="stat-damagetaken">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">📊</span>
-          <span class="stat-label">Joins</span>
-          <span class="stat-value" id="stat-joins">—</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-icon">🌟</span>
-          <span class="stat-label">XP Level</span>
-          <span class="stat-value" id="stat-level">—</span>
-        </div>
+        <div class="stat-row"><span class="stat-icon">❤️</span><span class="stat-label">Health</span><span class="stat-value" id="stat-health">—</span></div>
+        <div class="stat-row"><span class="stat-icon">🍖</span><span class="stat-label">Hunger</span><span class="stat-value" id="stat-hunger">—</span></div>
+        <div class="stat-row"><span class="stat-icon">⏱️</span><span class="stat-label">Time Played</span><span class="stat-value" id="stat-playtime">—</span></div>
+        <div class="stat-row"><span class="stat-icon">💀</span><span class="stat-label">Deaths</span><span class="stat-value" id="stat-deaths">—</span></div>
+        <div class="stat-row"><span class="stat-icon">⚔️</span><span class="stat-label">Mob Kills</span><span class="stat-value" id="stat-mobkills">—</span></div>
+        <div class="stat-row"><span class="stat-icon">🗡️</span><span class="stat-label">Player Kills</span><span class="stat-value" id="stat-playerkills">—</span></div>
+        <div class="stat-row"><span class="stat-icon">💥</span><span class="stat-label">Damage Dealt</span><span class="stat-value" id="stat-damagedealt">—</span></div>
+        <div class="stat-row"><span class="stat-icon">🩸</span><span class="stat-label">Damage Taken</span><span class="stat-value" id="stat-damagetaken">—</span></div>
+        <div class="stat-row"><span class="stat-icon">📊</span><span class="stat-label">Joins</span><span class="stat-value" id="stat-joins">—</span></div>
+        <div class="stat-row"><span class="stat-icon">🌟</span><span class="stat-label">XP Level</span><span class="stat-value" id="stat-level">—</span></div>
       </div>
-      <div class="profile-loading" id="profile-loading">
-        <span class="spinner-lg"></span>
-        <span>Loading stats…</span>
-      </div>
+      <div class="profile-loading" id="profile-loading"><span class="spinner-lg"></span><span>Loading stats…</span></div>
       <div class="profile-error" id="profile-error" hidden></div>
     </div>
   </div>
 
-  <!-- ── TOAST NOTIFICATIONS ── -->
   <div id="toast-container" aria-live="assertive" aria-atomic="true"></div>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

@@ -21,8 +21,3 @@ services:
         value: ayushmangupta00358e.9adcfa61
       - key: SFTP_PRIVATE_KEY
         value: ""
-      - key: PLUGIN_URL
-        value: "http://YOUR_MC_SERVER_IP:8089"
-      - key: PLUGIN_KEY
-        value: "mg_change_me_to_a_random_secret"
-
