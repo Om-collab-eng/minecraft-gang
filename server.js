@@ -337,6 +337,8 @@ app.get('/api/debug', async (req, res) => {
       detectedServerId,
       serverInfo,
       debugLogs,
+      consoleLogsCount: consoleLogs.length,
+      consoleLogsPreview: consoleLogs.slice(-5),
       testRequest: {
         status: testReq.status,
         headers: testReq.headers,
@@ -345,7 +347,7 @@ app.get('/api/debug', async (req, res) => {
       }
     });
   } catch (e) {
-    res.json({ ok: false, error: e.message, debugLogs });
+    res.json({ ok: false, error: e.message, debugLogs, consoleLogsCount: consoleLogs.length });
   }
 });
 
