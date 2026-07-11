@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: minecraft-gang-dashboard
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: MC_LOG_PATH
+        value: /opt/render/project/src/logs/latest.log
