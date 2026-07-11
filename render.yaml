@@ -7,5 +7,9 @@ services:
     envVars:
       - key: PORT
         value: 10000
-      - key: MC_LOG_PATH
-        value: /opt/render/project/src/logs/latest.log
+      - key: PANEL_URL
+        value: https://panel.skilloraclouds.com
+      - key: API_KEY
+        value: ptlc_LPQgGvrbQdE
+      - key: SERVER_ID
+        value: ""
