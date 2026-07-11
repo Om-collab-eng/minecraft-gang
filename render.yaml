@@ -13,3 +13,12 @@ services:
         value: ptlc_LPQgGvrbQdE
       - key: SERVER_ID
         value: ""
+      - key: SFTP_HOST
+        value: paid5.skilloraclouds.com
+      - key: SFTP_PORT
+        value: 2022
+      - key: SFTP_USER
+        value: ayushmangupta00358e.9adcfa61
+      - key: SFTP_PRIVATE_KEY
+        value: ""
+

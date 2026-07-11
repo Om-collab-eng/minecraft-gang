@@ -3,6 +3,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const https = require('https');
 const path = require('path');
+const { Client } = require('ssh2');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +14,13 @@ const PANEL_URL    = process.env.PANEL_URL    || 'https://panel.skilloraclouds.c
 const API_KEY      = process.env.API_KEY      || 'ptlc_LPQgGvrbQdE';
 const SERVER_ID    = process.env.SERVER_ID    || ''; // Will be auto-detected
 const PORT         = process.env.PORT         || 3000;
+
+// SFTP Config (for bypassing Cloudflare on panel API)
+const SFTP_HOST   = process.env.SFTP_HOST   || 'paid5.skilloraclouds.com';
+const SFTP_PORT   = parseInt(process.env.SFTP_PORT || '2022');
+const SFTP_USER   = process.env.SFTP_USER   || 'ayushmangupta00358e.9adcfa61';
+const SFTP_KEY    = process.env.SFTP_PRIVATE_KEY || ''; // PEM private key string
+
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let serverInfo = {
@@ -341,29 +349,143 @@ app.get('/api/debug', async (req, res) => {
   }
 });
 
+// ─── SFTP TAILING LOGIC (Cloudflare Bypass) ───────────────────────────────────
+let sftpConn = null;
+let sftpLastSize = 0;
+let sftpPollInterval = null;
+
+function startSftpTailing() {
+  if (sftpConn) return;
+
+  logDebug(`[SFTP] Initiating connection to ${SFTP_HOST}:${SFTP_PORT} as ${SFTP_USER}...`);
+  sftpConn = new Client();
+
+  sftpConn.on('ready', () => {
+    logDebug('[SFTP] SSH Connection successful. Requesting SFTP...');
+    serverInfo.status = 'online';
+    broadcast({ type: 'serverInfo', data: serverInfo });
+
+    sftpConn.sftp((err, sftp) => {
+      if (err) {
+        logDebug(`[SFTP] SFTP session failed: ${err.message}`);
+        sftpConn.end();
+        return;
+      }
+
+      logDebug('[SFTP] SFTP session ready. Tail monitoring started.');
+      const logFile = '/logs/latest.log';
+
+      async function checkLog() {
+        sftp.stat(logFile, (err, stats) => {
+          if (err) {
+            // file may not exist yet or still loading
+            return;
+          }
+
+          if (sftpLastSize === 0) {
+            // First run: read last 10KB
+            const size = stats.size;
+            const start = Math.max(0, size - 12000);
+            sftpReadChunk(sftp, logFile, start, size);
+            sftpLastSize = size;
+          } else if (stats.size > sftpLastSize) {
+            sftpReadChunk(sftp, logFile, sftpLastSize, stats.size);
+            sftpLastSize = stats.size;
+          } else if (stats.size < sftpLastSize) {
+            // log rotated or cleared
+            sftpLastSize = 0;
+          }
+        });
+      }
+
+      sftpPollInterval = setInterval(checkLog, 2500);
+      checkLog();
+    });
+  });
+
+  sftpConn.on('error', err => {
+    logDebug(`[SFTP] SSH connection error: ${err.message}`);
+    cleanupSftp();
+    setTimeout(startSftpTailing, 8000);
+  });
+
+  sftpConn.on('close', () => {
+    logDebug('[SFTP] SSH connection closed. Retrying in 8s...');
+    cleanupSftp();
+    setTimeout(startSftpTailing, 8000);
+  });
+
+  try {
+    sftpConn.connect({
+      host: SFTP_HOST,
+      port: SFTP_PORT,
+      username: SFTP_USER,
+      privateKey: SFTP_KEY,
+      readyTimeout: 15000,
+    });
+  } catch (e) {
+    logDebug(`[SFTP] Connect fail: ${e.message}`);
+    cleanupSftp();
+  }
+}
+
+function cleanupSftp() {
+  sftpConn = null;
+  sftpLastSize = 0;
+  if (sftpPollInterval) {
+    clearInterval(sftpPollInterval);
+    sftpPollInterval = null;
+  }
+}
+
+function sftpReadChunk(sftp, path, start, end) {
+  const length = end - start;
+  if (length <= 0) return;
+  const buffer = Buffer.alloc(length);
+
+  sftp.open(path, 'r', (err, fd) => {
+    if (err) return;
+    sftp.read(fd, buffer, 0, length, start, (err, bytesRead) => {
+      sftp.close(fd, () => {});
+      if (err) return;
+      const text = buffer.toString('utf8');
+      const lines = text.split('\n');
+      lines.forEach(line => {
+        if (line.trim()) {
+          pushLog(line);
+        }
+      });
+    });
+  });
+}
+
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 async function boot() {
-  logDebug('Connecting to Pterodactyl panel...');
-  const servers = await getServers();
-
-  if (!servers.length) {
-    logDebug('[Dashboard] No servers found or API blocked. Check your API key and panel URL.');
-    // Still start the HTTP server so Render doesn't fail
+  if (SFTP_KEY) {
+    logDebug('SFTP_PRIVATE_KEY found. Booting via SFTP direct log tailing (Bypassing Cloudflare)...');
+    startSftpTailing();
   } else {
-    const first = servers[0].attributes;
-    detectedServerId = first.identifier;
-    serverInfo.name       = first.name || 'Minecrafter Gang SMP';
-    serverInfo.maxPlayers = first.limits?.threads || 20;
+    logDebug('No SFTP_PRIVATE_KEY provided. Booting via Pterodactyl REST & WebSocket API...');
+    const servers = await getServers();
 
-    logDebug(`[Dashboard] Found server: "${first.name}" (ID: ${detectedServerId})`);
-    logDebug('[Dashboard] Connecting to live console...');
+    if (!servers.length) {
+      logDebug('[Dashboard] No servers found or API blocked. Check your API key and panel URL.');
+    } else {
+      const first = servers[0].attributes;
+      detectedServerId = first.identifier;
+      serverInfo.name       = first.name || 'Minecrafter Gang SMP';
+      serverInfo.maxPlayers = first.limits?.threads || 20;
 
-    // Connect to console WebSocket
-    connectConsole(detectedServerId);
+      logDebug(`[Dashboard] Found server: "${first.name}" (ID: ${detectedServerId})`);
+      logDebug('[Dashboard] Connecting to live console...');
 
-    // Poll resources every 8 seconds
-    setInterval(() => fetchResources(detectedServerId), 8000);
-    fetchResources(detectedServerId);
+      // Connect to console WebSocket
+      connectConsole(detectedServerId);
+
+      // Poll resources every 8 seconds
+      setInterval(() => fetchResources(detectedServerId), 8000);
+      fetchResources(detectedServerId);
+    }
   }
 
   server.listen(PORT, () => {
@@ -372,3 +494,4 @@ async function boot() {
 }
 
 boot();
+
