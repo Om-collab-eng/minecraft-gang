@@ -394,6 +394,24 @@ function startSftpTailing() {
         }
       });
 
+      sftp.readdir('plugins', (err, list) => {
+        if (err) {
+          logDebug(`[SFTP] readdir 'plugins' failed: ${err.message}`);
+        } else {
+          const fileNames = list.map(f => f.filename).join(', ');
+          logDebug(`[SFTP] Files in plugins: ${fileNames}`);
+        }
+      });
+
+      sftp.readdir('plugins/AuthMe', (err, list) => {
+        if (err) {
+          logDebug(`[SFTP] readdir 'plugins/AuthMe' failed: ${err.message}`);
+        } else {
+          const fileNames = list.map(f => f.filename).join(', ');
+          logDebug(`[SFTP] Files in plugins/AuthMe: ${fileNames}`);
+        }
+      });
+
       const logFile = 'logs/latest.log'; // relative path without leading slash
 
       async function checkLog() {
