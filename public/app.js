@@ -311,12 +311,8 @@ $('btn-clear-activity').addEventListener('click', () => { activityFeed.innerHTML
 
 // ─── DISABLE KEYBOARD INPUT ───────────────────────────────────────
 document.addEventListener('keydown', e => {
-  const tag = document.activeElement?.tagName;
-  const allowed = ['c', 'a', 'f5', 'tab', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'home', 'end', 'pageup', 'pagedown'];
-  if (e.ctrlKey && allowed.includes(e.key.toLowerCase())) return;
-  if (allowed.includes(e.key.toLowerCase())) return;
   if (e.key === 'F5' || e.key === 'F12') return;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') e.preventDefault();
+  if (e.ctrlKey && ['c','a','v','x'].includes(e.key.toLowerCase())) return;
 });
 
 // ─── PARTICLES ────────────────────────────────────────────────────
