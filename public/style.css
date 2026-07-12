@@ -473,3 +473,55 @@ body {
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.15); border-radius: 3px; }
+
+/* ─── IRON KIT PANEL ──────────────────────────────────────────── */
+.kit-body { padding: 1rem 1.25rem 1.25rem; }
+
+.kit-items {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0.75rem;
+}
+
+.kit-item {
+  font-size: 0.75rem; padding: 4px 10px; border-radius: 999px;
+  background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.15);
+  color: var(--text-secondary); font-weight: 500;
+}
+
+.kit-note {
+  font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.85rem;
+  font-style: italic;
+}
+
+.kit-input-row { display: flex; gap: 8px; }
+
+.kit-input {
+  flex: 1; padding: 0.55rem 0.85rem;
+  background: rgba(15, 22, 35, 0.9); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
+  outline: none; transition: border-color 0.25s, box-shadow 0.25s;
+}
+
+.kit-input::placeholder { color: var(--text-muted); font-family: 'Outfit', sans-serif; font-size: 0.8rem; }
+.kit-input:focus { border-color: var(--accent-green); box-shadow: 0 0 0 3px rgba(34,197,94,0.15); }
+
+.kit-claim-btn {
+  padding: 0.55rem 1.1rem; border: none; border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff;
+  font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; transition: transform 0.15s, box-shadow 0.25s, opacity 0.25s;
+  letter-spacing: 0.02em; white-space: nowrap;
+}
+
+.kit-claim-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34,197,94,0.3); }
+.kit-claim-btn:active { transform: translateY(0); }
+.kit-claim-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.kit-status {
+  margin-top: 0.65rem; padding: 0.5rem 0.75rem; border-radius: var(--radius-sm);
+  font-size: 0.8rem; font-weight: 500;
+}
+
+.kit-status.hidden { display: none; }
+.kit-status.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: var(--accent-green); }
+.kit-status.error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: var(--accent-red); }

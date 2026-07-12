@@ -365,5 +365,50 @@ $('server-ip').addEventListener('click', () => {
   }).catch(() => showToast('❌ Failed to copy IP', 'error'));
 });
 
+// ─── IRON KIT CLAIM ──────────────────────────────────────────────
+const kitInput     = $('kit-username');
+const kitClaimBtn  = $('kit-claim-btn');
+const kitStatus    = $('kit-status');
+
+kitClaimBtn.addEventListener('click', async () => {
+  const username = kitInput.value.trim();
+  if (!username) { kitStatus.textContent = 'Please enter a username.'; kitStatus.className = 'kit-status error'; kitStatus.hidden = false; return; }
+
+  kitClaimBtn.disabled = true;
+  kitClaimBtn.textContent = 'Claiming…';
+  kitStatus.hidden = true;
+
+  try {
+    const res = await fetch('/api/claim-kit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      kitStatus.textContent = '✅ ' + data.message;
+      kitStatus.className = 'kit-status success';
+      kitStatus.hidden = false;
+      kitInput.value = '';
+      kitClaimBtn.textContent = 'Claimed!';
+    } else {
+      kitStatus.textContent = data.error;
+      kitStatus.className = 'kit-status error';
+      kitStatus.hidden = false;
+      kitClaimBtn.disabled = false;
+      kitClaimBtn.textContent = 'Claim';
+    }
+  } catch {
+    kitStatus.textContent = 'Cannot reach server. Try again.';
+    kitStatus.className = 'kit-status error';
+    kitStatus.hidden = false;
+    kitClaimBtn.disabled = false;
+    kitClaimBtn.textContent = 'Claim';
+  }
+});
+
+kitInput.addEventListener('keydown', e => { if (e.key === 'Enter') kitClaimBtn.click(); });
+
 // ─── BOOT ─────────────────────────────────────────────────────────
 connect();

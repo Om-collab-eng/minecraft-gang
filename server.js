@@ -3,6 +3,7 @@ const http = require('http');
 const WebSocket = require('ws');
 const https = require('https');
 const path = require('path');
+const fs = require('fs');
 const { Client } = require('ssh2');
 
 const app = express();
@@ -207,8 +208,76 @@ app.post('/api/error-report', (req, res) => { const { message, source, lineno, c
 
 // ─── PLAYER STATS (public, no auth) ─────────────────────────────
 app.get('/api/player-stats/:username', (req, res) => {
-  // Return "not found" for now — stats only available if plugin is installed
   res.json({ ok: true, stats: { username: req.params.username, found: false } });
+});
+
+// ─── IRON KIT CLAIM ──────────────────────────────────────────────
+const CLAIMED_FILE = path.join(__dirname, 'claimed.json');
+let claimedKits = {};
+
+function loadClaimed() {
+  try {
+    if (fs.existsSync(CLAIMED_FILE)) {
+      claimedKits = JSON.parse(fs.readFileSync(CLAIMED_FILE, 'utf8'));
+    }
+  } catch { claimedKits = {}; }
+}
+
+function saveClaimed() {
+  try { fs.writeFileSync(CLAIMED_FILE, JSON.stringify(claimedKits, null, 2)); } catch {}
+}
+
+loadClaimed();
+
+const KIT_ITEMS = [
+  'iron_helmet 1',
+  'iron_chestplate 1',
+  'iron_leggings 1',
+  'iron_boots 1',
+  'iron_sword 1',
+  'iron_pickaxe 1',
+  'iron_axe 1',
+  'cooked_beef 8',
+];
+
+function sendConsoleCommand(cmd) {
+  if (pteroWs && pteroWs.readyState === WebSocket.OPEN) {
+    pteroWs.send(JSON.stringify({ event: 'send command', args: [cmd] }));
+  }
+}
+
+app.get('/api/claimed/:username', (req, res) => {
+  const username = req.params.username.toLowerCase();
+  const claimed = !!claimedKits[username];
+  res.json({ ok: true, claimed, claimedAt: claimedKits[username]?.at || null });
+});
+
+app.post('/api/claim-kit', (req, res) => {
+  const { username } = req.body;
+  if (!username || typeof username !== 'string') {
+    return res.status(400).json({ ok: false, error: 'Username required.' });
+  }
+
+  const name = username.trim();
+  const key = name.toLowerCase();
+
+  if (!serverInfo.players.includes(name)) {
+    return res.json({ ok: false, error: 'You must be online on the server to claim this kit.' });
+  }
+
+  if (claimedKits[key]) {
+    return res.json({ ok: false, error: 'You have already claimed your free iron kit.' });
+  }
+
+  for (const item of KIT_ITEMS) {
+    sendConsoleCommand(`give ${name} ${item}`);
+  }
+
+  claimedKits[key] = { at: new Date().toISOString() };
+  saveClaimed();
+
+  logDebug(`[Kit] Iron kit claimed by ${name}`);
+  res.json({ ok: true, message: 'Iron kit delivered! Check your inventory.' });
 });
 
 // ─── SFTP TAILING ────────────────────────────────────────────────
